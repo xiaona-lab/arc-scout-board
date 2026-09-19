@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arc Scout — Real-time dashboard</title>
+<style>
+:root {
+  --bg: #0a0a0f;
+  --card: #13131a;
+  --border: #1e1e2a;
+  --accent: #6366f1;
+  --green: #22c55e;
+  --text: #e2e2e8;
+  --muted: #8888a0;
+  --font: 'SF Mono','Fira Code','JetBrains Mono','Cascadia Code',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--font);padding:2rem;font-size:14px}
+.container{max-width:800px;margin:0 auto}
+h1{font-size:1.25rem;font-weight:700;margin-bottom:.5rem;color:#fff}
+h1 span{color:var(--accent)}
+.sub{color:var(--muted);margin-bottom:2rem;font-size:.85rem}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem}
+.card h3{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.4rem}
+.card .value{font-size:1.4rem;font-weight:700;color:#fff}
+.card .subtext{font-size:.75rem;color:var(--muted);margin-top:.25rem}
+.full{grid-column:1/-1}
+.pulse{color:var(--green);font-size:.8rem}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+th{text-align:left;color:var(--muted);font-weight:500;padding:.5rem 0;border-bottom:1px solid var(--border)}
+td{padding:.4rem 0;border-bottom:1px solid var(--border)}
+td:last-child{text-align:right}
+.status{color:var(--green)}
+.loading{opacity:.5;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+.error{color:#ef4444}
+footer{margin-top:2rem;color:var(--muted);font-size:.75rem;text-align:center}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1><span>◈</span> arc scout</h1>
+  <div class="sub">live data · arc mainnet · chain 5042</div>
+  <div class="grid">
+    <div class="card"><h3>chain id</h3><div class="value" id="chainId">—</div></div>
+    <div class="card"><h3>block height</h3><div class="value" id="blockNumber">—</div><div class="subtext" id="blockTime"></div></div>
+    <div class="card"><h3>gas price</h3><div class="value" id="gasPrice">—</div><div class="subtext" id="gasPriceSub">gwei-equivalent USDC</div></div>
+    <div class="card"><h3>wallet balance</h3><div class="value" id="balance">—</div><div class="subtext">native USDC</div></div>
+    <div class="card full"><h3>open bounties (arcbounty)</h3>
+      <table id="bounties"><tr><th>id</th><th>category</th><th>reward</th><th>type</th></tr></table>
+    </div>
+  </div>
+  <footer><span id="lastUpdate">connecting…</span> · <a href="https://github.com/xiaona-labs/arc-scout-board" style="color:var(--accent)">source</a></footer>
+</div>
+<script>
+const RPC = 'https://rpc.blockdaemon.mainnet.arc.io';
+const BOUNTY_ADAPTER = '0x73c617e808ED5c7Ca41413DFC6EE940dDcBb0b8D';
+const USDC_ERC20 = '0x3600000000000000000000000000000000000000';
+const WALLET = '0xe682C5B58B8292De372b3Fd7003Fb79bF8eD7cDE';
+
+const rpc = (method, params) =>
+  fetch(RPC,{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})})
+  .then(r=>r.json()).then(d=>d.result);
+
+async function update() {
+  const slot = document.getElementById('lastUpdate');
+  slot.textContent = 'loading…';
+  try {
+    const [chainId,block,gPrice,bal] = await Promise.all([
+      rpc('eth_chainId',[]),
+      rpc('eth_blockNumber',[]),
+      rpc('eth_gasPrice',[]),
+      rpc('eth_getBalance',[WALLET,'latest']),
+    ]);
+    document.getElementById('chainId').textContent = parseInt(chainId,16) + ' ' + ((parseInt(chainId,16)===5042)?'✓':'?');
+    const bn = parseInt(block,16);
+    document.getElementById('blockNumber').textContent = bn.toLocaleString();
+    document.getElementById('blockTime').textContent = 'updated ' + new Date().toLocaleTimeString() + ' UTC';
+    const gp = parseInt(gPrice,16) / 1e18;
+    document.getElementById('gasPrice').textContent = gp.toFixed(4);
+    const balN = parseInt(bal,16) / 1e18;
+    document.getElementById('balance').textContent = balN.toFixed(4);
+  } catch(e) {
+    document.getElementById('chainId').innerHTML = '<span class="error">RPC error</span>';
+  }
+  try {
+    // Read ERC-20 balance
+    const data = '0x70a08231000000000000000000000000' + WALLET.slice(2).toLowerCase();
+    const resp = await rpc('eth_call',[{to:USDC_ERC20,data},'latest']);
+    const erc20bal = parseInt(resp,16) / 1e6;
+    document.getElementById('balance').textContent = erc20bal.toFixed(2);
+  } catch(e){}
+  slot.innerHTML = `updated ${new Date().toISOString()}`;
+}
+
+update();
+setInterval(update, 15000);
+</script>
+</body>
+</html>
